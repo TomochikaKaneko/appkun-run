@@ -50,7 +50,7 @@
         /* ★【修正】キャンバスの黒枠内、一番底の緑エリアに上から位置を指定して収める */
         .info {
             position: absolute;
-            top: 275px; /* ★上から268pxの位置に固定（Y=270〜300の緑エリアにジャストフィット） */
+            top: 275px; /* ★上から265px〜275px辺りで緑のエリアにジャストフィット */
             left: 0;
             width: 100%;
             font-size: 11px; /* 文字サイズは収まりの良い11pxをキープ */
@@ -63,7 +63,7 @@
             z-index: 10;
         }
 
-        /* ゲームエリアの右上に配置されるミュートスイッチ */
+        /* ★【修正】ゲームエリアの右上に配置されるミュートスイッチ（スマホ最優先ガード版） */
         #mute-switch {
             position: absolute;
             top: 15px;
@@ -71,7 +71,7 @@
             width: 44px;
             height: 44px;
             cursor: pointer;
-            z-index: 100;
+            z-index: 9999; /* ★すべてのレイヤーを突き抜けて最前面に引っ張り出す */
             background-color: rgba(255, 255, 255, 0.85);
             border: 3px solid #333;
             border-radius: 6px;
@@ -79,6 +79,7 @@
             justify-content: center;
             align-items: center;
             box-sizing: border-box;
+            touch-action: auto; /* スマホのタップイベントを確実にブラウザへ通す */
         }
         #mute-switch::after { content: '🔇'; font-size: 24px; }
         #mute-switch.sound-on::after { content: '🔊'; }
@@ -225,7 +226,7 @@ const keysPressed = { ArrowLeft: false, ArrowRight: false, ArrowDown: false };
 let touchStartX = 0; let touchStartY = 0; let playerStartX = 0;
 let isDragging = false; let swipeTriggered = false; 
 
-// ★【新設】スマホのドラッグ方向を管理する変数（-1: 左, 1: 右, 0: 静止）
+// ★スマホのドラッグ方向を管理する変数（-1: 左, 1: 右, 0: 静止）
 let touchMoveDirection = 0; 
 
 const images = {};
@@ -256,7 +257,7 @@ const OBSTACLE_TYPES = {
 let obstacles = [];
 
 // ==========================================
-// 📱 ★【新設】全画面パーフェクトフィット・レスポンシブシステム ★
+// 📱 ★全画面パーフェクトフィット・レスポンシブシステム ★
 // ==========================================
 function resizeGame() {
     const wrapper = document.getElementById('game-wrapper');
@@ -393,11 +394,26 @@ btnSoundOn.addEventListener('click', (e) => { e.stopPropagation(); isMuted = fal
 btnSoundOff.addEventListener('click', (e) => { e.stopPropagation(); isMuted = true; btnSoundOn.classList.remove('active'); btnSoundOff.classList.add('active'); muteSwitch.classList.remove('sound-on'); });
 document.getElementById('start-btn').addEventListener('click', (e) => { e.stopPropagation(); handleGameStartAction(); });
 
-muteSwitch.addEventListener('click', (e) => {
-    e.stopPropagation(); const bgm = document.getElementById('bgm');
-    if (!isMuted) { isMuted = true; muteSwitch.classList.remove('sound-on'); if (bgm) bgm.pause(); } 
-    else { isMuted = false; muteSwitch.classList.add('sound-on'); if (gameState === 'PLAYING' && bgm) { bgm.play().catch(e => {}); } }
-});
+// ★【修正】PCクリック・スマホ直接タッチの両方で確実に音声を切り替える共通ロジック
+function toggleMuteAction(e) {
+    e.stopPropagation(); 
+    e.preventDefault(); 
+    const bgm = document.getElementById('bgm');
+
+    if (!isMuted) {
+        isMuted = true;
+        muteSwitch.classList.remove('sound-on');
+        if (bgm) bgm.pause();
+    } else {
+        isMuted = false;
+        muteSwitch.classList.add('sound-on');
+        if (gameState === 'PLAYING' && bgm) {
+            bgm.play().catch(e => {});
+        }
+    }
+}
+muteSwitch.addEventListener('click', toggleMuteAction);
+muteSwitch.addEventListener('touchend', toggleMuteAction); // スマホ用タッチセンサー追加
 
 window.addEventListener('keydown', (e) => {
     if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); processInput(); }
@@ -468,6 +484,10 @@ window.addEventListener('touchmove', (e) => {
 }, { passive: false });
 
 window.addEventListener('touchend', (e) => {
+    // 💡【追加】ミュートスイッチをタップした後のジャンプ暴発を完全に防ぐガード
+    if (e.target.closest('#mute-switch')) {
+        return;
+    }
     if (gameState === 'START') return;
     if (e.cancelable) e.preventDefault();
     if (appKun.isCrouching) { appKun.isCrouching = false; } 
@@ -484,6 +504,7 @@ function initGame() {
     spawnObstacleGroup();
 }
 
+// 衝突判定や障害物の生成、描画ロジックは完全維持（中略せずそのまま格納）
 function createObstacle(baseX, typeData) {
     let specialMove = 'none'; let waveAmplitude = 0;
     if (typeData.name === 'shaker' && distance >= 500) { specialMove = 'randomWave'; waveAmplitude = 15 + Math.random() * 20; }
@@ -525,7 +546,6 @@ function gameLoop() {
             else { let minSpeed = 6.0; let maxSpeed = 11.0 + (newMilestone - 10) * 0.5; currentSpeed = minSpeed + Math.random() * (maxSpeed - minSpeed); }
         }
 
-        // ★【修正】左右移動の処理（PCのキーボードとスマホのドラッグ状態を完全同期）
         if (!appKun.isCrouching) {
             if (keysPressed.ArrowLeft || touchMoveDirection === -1) { appKun.x -= appKun.moveSpeed; }
             if (keysPressed.ArrowRight || touchMoveDirection === 1) { appKun.x += appKun.moveSpeed; }

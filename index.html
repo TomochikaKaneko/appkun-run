@@ -3,7 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>アップ君の筋トレラン</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
+    
+    <title>アップ君の筋トレラン - 新記録ジングル版</title>
     <style>
         body {
             margin: 0;
@@ -14,7 +18,7 @@
             justify-content: center;
             align-items: center;
             height: 100vh;
-            font-family: 'Helvetica Neue', Arial, sans-serif;
+            font-family: "DotGothic16", sans-serif; 
             user-select: none;
             overflow: hidden;
         }
@@ -26,15 +30,18 @@
         }
         .info {
             margin-top: 10px;
-            font-size: 14px;
-            color: #666;
+            font-size: 16px;
+            color: #333;
+            letter-spacing: 1px;
         }
     </style>
 </head>
 <body>
 
+<audio id="bgm" src="Above_The_Spikes.mp3" loop></audio>
+
 <canvas id="gameCanvas" width="800" height="300"></canvas>
-<div class="info">PC: スペース or クリック / スマホ: 画面どこでもタップでジャンプ！</div>
+<div class="info">ＰＣ：スペース ｏｒ クリック ／ スマホ：画面どこでもタップでジャンプ！</div>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
@@ -47,8 +54,8 @@ let isNewRecord = false;
 let currentSpeed = 5;
 let bgOffset = 0;
 
-// 【追加】二重入力を完全に防止するためのフラグ
 let inputLocked = false;
+let gameOverTimer = 0; 
 
 const images = {};
 const imgSources = {
@@ -104,53 +111,152 @@ const OBSTACLE_TYPES = {
 let obstacles = [];
 
 // ==========================================
-// 🛠️ 【根本修正】すべての入力を1つの関数に統合して完全制御
+// 🔊 プログラムサウンドシステム
 // ==========================================
+let audioCtx = null;
 
+// ジャンプ効果音
+function playJumpSound() {
+    try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'square'; 
+        const now = audioCtx.currentTime;
+        osc.frequency.setValueAtTime(180, now); 
+        osc.frequency.exponentialRampToValueAtTime(850, now + 0.15); 
+        gain.gain.setValueAtTime(0.6, now); 
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.15); 
+    } catch(e) { console.log("Audio error:", e); }
+}
+
+// ① 記録更新できなかった時用の音楽（残念100%）
+function playGameOverSound() {
+    try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const now = audioCtx.currentTime;
+        const melody = [
+            { f: 523, d: 0.08 }, // ド
+            { f: 494, d: 0.08 }, // シ
+            { f: 440, d: 0.08 }, // ラ
+            { f: 392, d: 0.12 }, // ソ
+            { f: 0,   d: 0.04 }, 
+            { f: 349, d: 0.16 }, // ファ
+            { f: 0,   d: 0.04 }, 
+            { f: 349, d: 0.16 }, // ファ
+            { f: 0,   d: 0.04 }, 
+            { f: 311, d: 0.40 }  // ミ♭
+        ];
+        let currentOffset = 0;
+        melody.forEach((note) => {
+            if (note.f > 0) {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(note.f, now + currentOffset);
+                gain.gain.setValueAtTime(0.4, now + currentOffset);
+                gain.gain.linearRampToValueAtTime(0.01, now + currentOffset + note.d);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(now + currentOffset);
+                osc.stop(now + currentOffset + note.d);
+            }
+            currentOffset += note.d;
+        });
+    } catch(e) { console.log("Audio error:", e); }
+}
+
+// ② ★【新開発】記録更新できた時用の音楽（喜び8：悲しみ2）★
+function playNewRecordSound() {
+    try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const now = audioCtx.currentTime;
+        
+        // 前半はテンポよく明るいメロディ（喜び）⇒ 最後だけ不協和音で落ちる（悲しみ）
+        const melody = [
+            { f: 523, d: 0.08 }, // ド (高)
+            { f: 659, d: 0.08 }, // ミ
+            { f: 784, d: 0.08 }, // ソ
+            { f: 1046,d: 0.16 }, // ド (超高・テッテレー！)
+            { f: 0,   d: 0.04 }, // タメ
+            { f: 880, d: 0.12 }, // ラ (お祝い)
+            { f: 987, d: 0.12 }, // シ (お祝い)
+            { f: 1046,d: 0.24 }, // ド (お祝い最高潮)
+            { f: 466, d: 0.40 }  // シ♭ (あ、でも死んだわ…のローノート)
+        ];
+        
+        let currentOffset = 0;
+        melody.forEach((note) => {
+            if (note.f > 0) {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                
+                // 新記録時は少しきらびやかな「10%パルス波（なければ通常のsquare）」っぽく高めに
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(note.f, now + currentOffset);
+                
+                gain.gain.setValueAtTime(0.35, now + currentOffset);
+                gain.gain.linearRampToValueAtTime(0.01, now + currentOffset + note.d);
+                
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                
+                osc.start(now + currentOffset);
+                osc.stop(now + currentOffset + note.d);
+            }
+            currentOffset += note.d;
+        });
+    } catch(e) { console.log("Audio error:", e); }
+}
+
+// --- 入力処理システム ---
 function processInput(inputType, e) {
-    // すでに他の入力が処理中の場合は、この瞬間のイベントを完全に無視する
     if (inputLocked) return;
-    
-    // ロックをかける
     inputLocked = true;
-    
-    // 0.1秒後にロックを解除する（これでキー押しっぱなしや、クリックの同時発生を防ぐ）
     setTimeout(() => { inputLocked = false; }, 100);
 
-    if (gameState === 'START' || gameState === 'GAMEOVER') {
+    const bgm = document.getElementById('bgm');
+
+    if (gameState === 'START') {
         initGame();
         gameState = 'PLAYING';
+        if (bgm) {
+            bgm.currentTime = 0;
+            bgm.play().catch(err => console.log("BGM play blocked or missing"));
+        }
     } else if (gameState === 'PLAYING') {
         if (appKun.isGrounded) {
             appKun.vy = appKun.jumpForce;
             appKun.isGrounded = false;
+            playJumpSound(); 
+        }
+    } else if (gameState === 'GAMEOVER') {
+        if (gameOverTimer > 48) { 
+            initGame();
+            gameState = 'PLAYING';
+            if (bgm) {
+                bgm.currentTime = 0;
+                bgm.play().catch(err => console.log("BGM play blocked or missing"));
+            }
         }
     }
 }
 
-// 1. キーボード（スペースキー）
 window.addEventListener('keydown', (e) => {
-    if (e.code === 'Space') { 
-        e.preventDefault(); 
-        processInput('keyboard', e); 
-    }
+    if (e.code === 'Space') { e.preventDefault(); processInput('keyboard', e); }
 });
-
-// 2. スマホ・タブレット（タッチ）
 window.addEventListener('touchstart', (e) => { 
-    if (e.cancelable) e.preventDefault(); 
-    processInput('touch', e);
+    if (e.cancelable) e.preventDefault(); processInput('touch', e);
 }, { passive: false });
-
-// 3. パソコン（マウスの画面どこでもクリック）
 window.addEventListener('mousedown', (e) => {
-    // スマホの「タッチによるエミュレートクリック」はここで除外する
-    if ('ontouchstart' in window && e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents) {
-        return;
-    }
+    if ('ontouchstart' in window && e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents) return;
     processInput('mouse', e);
 });
-
 
 function initGame() {
     distance = 0;
@@ -165,18 +271,17 @@ function initGame() {
     appKun.landSquat = 0;
     appKun.angle = 0;
     obstacles = [];
+    gameOverTimer = 0; 
     spawnObstacleGroup();
 }
 
 function createObstacle(baseX, typeData) {
     let specialMove = 'none';
     let waveAmplitude = 0;
-
     if (typeData.name === 'shaker' && distance >= 500) {
         specialMove = 'randomWave'; 
         waveAmplitude = 15 + Math.random() * 20; 
     }
-
     return {
         x: baseX,
         y: typeData.spawnY,
@@ -193,14 +298,12 @@ function createObstacle(baseX, typeData) {
 
 function spawnObstacleGroup() {
     let currentX = 850;
-
     if (distance < 1000) {
         let keys = Object.keys(OBSTACLE_TYPES);
         let randKey = keys[Math.floor(Math.random() * keys.length)];
         obstacles.push(createObstacle(currentX, OBSTACLE_TYPES[randKey]));
     } else {
         let comboPattern = Math.floor(Math.random() * 4);
-        
         if (comboPattern === 0) {
             obstacles.push(createObstacle(currentX, OBSTACLE_TYPES.barbel));
             obstacles.push(createObstacle(currentX + 240, OBSTACLE_TYPES.dumbbell));
@@ -241,12 +344,11 @@ function gameLoop() {
 
     if (gameState === 'START') {
         ctx.fillStyle = '#2f3542';
-        ctx.font = 'bold 28px sans-serif';
+        ctx.font = '28px "DotGothic16"'; 
         ctx.textAlign = 'center';
-        ctx.fillText('アップ君の筋トレラン -マゾ仕様-', canvas.width / 2, 110);
-        ctx.font = '18px sans-serif';
+        ctx.fillText('アップ君の筋トレラン', canvas.width / 2, 110);
+        ctx.font = '16px "DotGothic16"'; 
         ctx.fillText('どこでも画面を触るかスペースでスタート！', canvas.width / 2, 160);
-
         ctx.drawImage(images.appKun1, appKun.x, appKun.y, appKun.imgWidth, appKun.imgHeight);
 
     } else if (gameState === 'PLAYING') {
@@ -304,9 +406,18 @@ function gameLoop() {
 
             if (checkCollision(appKun, obs)) {
                 gameState = 'GAMEOVER';
+                
+                const bgm = document.getElementById('bgm');
+                if (bgm) bgm.pause();
+                
+                // ★【大修正】ここで新記録かどうかを判定してジングルを切り替える！
                 if (Math.floor(distance) > highScore) {
                     highScore = Math.floor(distance);
                     isNewRecord = true;
+                    playNewRecordSound(); // 喜び8 : 悲しみ2 ジングル
+                } else {
+                    isNewRecord = false;
+                    playGameOverSound(); // 通常のガッカリジングル
                 }
             }
 
@@ -333,24 +444,23 @@ function gameLoop() {
         let drawY = appKun.y + appKun.landSquat;
         ctx.translate(appKun.x + appKun.imgWidth / 2, drawY + appKun.imgHeight / 2);
         ctx.rotate(appKun.angle);
-
         if (appKun.landSquat > 0) {
             ctx.scale(1.1, 1.0 - (appKun.landSquat * 0.02)); 
         }
-
         let currentAppImage = appKun.animeFrame === 0 ? images.appKun1 : images.appKun2;
         ctx.drawImage(currentAppImage, -appKun.imgWidth / 2, -appKun.imgHeight / 2, appKun.imgWidth, appKun.imgHeight);
         ctx.restore();
 
-        // UI表示
         ctx.fillStyle = '#2f3542';
-        ctx.font = 'bold 20px sans-serif';
+        ctx.font = '20px "DotGothic16"'; 
         ctx.textAlign = 'left';
         ctx.fillText(`距離: ${Math.floor(distance)} m`, 20, 35);
-        ctx.font = '16px sans-serif';
+        ctx.font = '15px "DotGothic16"'; 
         ctx.fillText(`最高記録: ${highScore} m`, 20, 65);
 
     } else if (gameState === 'GAMEOVER') {
+        gameOverTimer++;
+
         obstacles.forEach(obs => {
             if (obs.name === 'dumbbell') ctx.drawImage(images.dumbbell, obs.x, obs.y, obs.width, obs.height);
             else if (obs.name === 'rack-barbel') ctx.drawImage(images.barbel, obs.x, obs.y, obs.width, obs.height);
@@ -362,27 +472,29 @@ function gameLoop() {
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         ctx.fillStyle = '#ff4757';
-        ctx.font = 'bold 36px sans-serif';
+        ctx.font = '36px "DotGothic16"'; 
         ctx.textAlign = 'center';
         ctx.fillText('GAME OVER', canvas.width / 2, 100);
 
         ctx.fillStyle = '#fff';
-        ctx.font = '22px sans-serif';
+        ctx.font = '22px "DotGothic16"'; 
         ctx.fillText(`記録: ${Math.floor(distance)} m`, canvas.width / 2, 145);
 
         if (isNewRecord && highScore > 0) {
             ctx.fillStyle = '#eccc68';
-            ctx.font = 'bold 26px sans-serif';
+            ctx.font = '22px "DotGothic16"'; 
             ctx.fillText('★ 新記録達成！ナイスバルク！ ★', canvas.width / 2, 195);
         } else {
             ctx.fillStyle = '#f1f2f6';
-            ctx.font = '16px sans-serif';
+            ctx.font = '16px "DotGothic16"'; 
             ctx.fillText(`（歴代最高: ${highScore} m）`, canvas.width / 2, 185);
         }
 
-        ctx.fillStyle = '#fff';
-        ctx.font = '16px sans-serif';
-        ctx.fillText('どこでも画面を触るかスペースで再挑戦', canvas.width / 2, 240);
+        if (gameOverTimer > 48) {
+            ctx.fillStyle = '#fff';
+            ctx.font = '16px "DotGothic16"'; 
+            ctx.fillText('どこでも画面を触るかスペースで再挑戦', canvas.width / 2, 240);
+        }
     }
 
     requestAnimationFrame(gameLoop);

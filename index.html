@@ -22,11 +22,17 @@
             user-select: none;
             overflow: hidden;
         }
+        #game-container {
+            position: relative;
+            width: 800px;
+            height: 300px;
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
         canvas {
             background-color: #7ed6df; 
             border: 4px solid #333;
-            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
-            max-width: 100%;
+            box-sizing: border-box;
+            display: block;
         }
         .info {
             margin-top: 10px;
@@ -35,17 +41,130 @@
             letter-spacing: 1px;
             text-align: center;
         }
+
+        /* ★【修正】ゲームエリアの右上に配置されるミュートスイッチ ★ */
+        #mute-switch {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            width: 44px;
+            height: 44px;
+            cursor: pointer;
+            z-index: 100;
+            background-color: rgba(255, 255, 255, 0.85);
+            border: 3px solid #333;
+            border-radius: 6px;
+            display: none; /* プレイ中・ゲームオーバー中だけ表示 */
+            justify-content: center;
+            align-items: center;
+            box-sizing: border-box;
+        }
+        #mute-switch::after {
+            content: '🔇'; /* 初期値：音なし(ミュート) */
+            font-size: 24px;
+        }
+        #mute-switch.sound-on::after {
+            content: '🔊'; /* 音あり時 */
+        }
+
+        /* ★【新設】スタート画面のUIレイアウト ★ */
+        #start-screen {
+            position: absolute;
+            top: 4px;
+            left: 4px;
+            width: 792px; /* 内枠のサイズ */
+            height: 292px;
+            background-color: rgba(126, 214, 223, 0.9); /* キャンバス背景に合わせた薄い青 */
+            z-index: 50;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        .start-title {
+            font-size: 32px;
+            color: #2f3542;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .start-subtitle {
+            font-size: 15px;
+            color: #57606f;
+            margin-bottom: 25px;
+        }
+        
+        /* 音選択トグルスイッチ */
+        .audio-select-container {
+            display: flex;
+            background: #cbd5e1;
+            padding: 5px;
+            border-radius: 8px;
+            border: 3px solid #333;
+            margin-bottom: 25px;
+        }
+        .audio-btn {
+            padding: 8px 18px;
+            font-family: "DotGothic16", sans-serif;
+            font-size: 16px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            border-radius: 5px;
+            color: #57606f;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .audio-btn.active {
+            background: #2f3542;
+            color: #fff;
+            font-weight: bold;
+        }
+
+        /* ゲーム開始ボタン */
+        #start-btn {
+            font-family: "DotGothic16", sans-serif;
+            font-size: 22px;
+            background-color: #ff4757;
+            color: white;
+            border: 3px solid #333;
+            padding: 10px 35px;
+            cursor: pointer;
+            box-shadow: 0 4px 0 #333;
+            border-radius: 6px;
+        }
+        #start-btn:active {
+            transform: translateY(4px);
+            box-shadow: none;
+        }
     </style>
 </head>
 <body>
 
-<audio id="bgm" src="Above_The_Spikes.mp3" loop></audio>
+<div id="game-container">
+    <div id="mute-switch"></div>
 
-<canvas id="gameCanvas" width="800" height="300"></canvas>
+    <div id="start-screen">
+        <div class="start-title">アップ君の筋トレラン</div>
+        <!-- <div class="start-subtitle">〜超マゾ仕様ランニングアクション〜</div> -->
+        
+        <div class="audio-select-container">
+            <button id="btn-sound-off" class="audio-btn active">🔇 音なし (推奨)</button>
+            <button id="btn-sound-on" class="audio-btn">🔊 音あり</button>
+        </div>
+
+        <button id="start-btn">GAME START</button>
+    </div>
+
+    <canvas id="gameCanvas" width="800" height="300"></canvas>
+</div>
+
 <div class="info">
     ＰＣ：[←][→]移動 / [↑]orスペースでジャンプ / [↓]長押しでしゃがむ<br>
     スマホ：左右ドラッグで移動 / タップでジャンプ / 下スワイプ長押しでしゃがむ！
 </div>
+
+<audio id="bgm" src="Above_The_Spikes.mp3" loop></audio>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
@@ -60,6 +179,9 @@ let bgOffset = 0;
 
 let inputLocked = false;
 let gameOverTimer = 0; 
+
+// ★【修正】初期値を「ミュート(音なし)」に設定 ★
+let isMuted = true;
 
 // キーボードの押し状態
 const keysPressed = {
@@ -135,7 +257,9 @@ let obstacles = [];
 // 🔊 プログラムサウンドシステム
 // ==========================================
 let audioCtx = null;
+
 function playJumpSound() {
+    if (isMuted) return; 
     try {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const osc = audioCtx.createOscillator();
@@ -152,6 +276,7 @@ function playJumpSound() {
 }
 
 function playGameOverSound() {
+    if (isMuted) return; 
     try {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const now = audioCtx.currentTime;
@@ -176,6 +301,7 @@ function playGameOverSound() {
 }
 
 function playNewRecordSound() {
+    if (isMuted) return; 
     try {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const now = audioCtx.currentTime;
@@ -199,17 +325,37 @@ function playNewRecordSound() {
     } catch(e) {}
 }
 
+function startBGM() {
+    if (isMuted) return; 
+    const bgm = document.getElementById('bgm');
+    if (bgm) { 
+        bgm.currentTime = 0; 
+        bgm.play().catch(e => {
+            console.log("BGM play blocked");
+        }); 
+    }
+}
+
+// ★【修正】ゲーム本番スタートの処理関数 ★
+function handleGameStartAction() {
+    if (gameState !== 'START') return;
+    
+    // UIを非表示にしてゲーム画面、右上ボタンを出す
+    document.getElementById('start-screen').style.display = 'none';
+    document.getElementById('mute-switch').style.display = 'flex';
+    
+    initGame();
+    gameState = 'PLAYING';
+    startBGM();
+}
+
 function processInput() {
     if (inputLocked) return;
     inputLocked = true;
     setTimeout(() => { inputLocked = false; }, 100);
 
-    const bgm = document.getElementById('bgm');
-
     if (gameState === 'START') {
-        initGame();
-        gameState = 'PLAYING';
-        if (bgm) { bgm.currentTime = 0; bgm.play().catch(e => {}); }
+        handleGameStartAction(); // キー入力でもスタート可能に
     } else if (gameState === 'PLAYING') {
         if (appKun.isGrounded && !appKun.isCrouching) {
             appKun.vy = appKun.jumpForce;
@@ -220,14 +366,61 @@ function processInput() {
         if (gameOverTimer > 48) { 
             initGame();
             gameState = 'PLAYING';
-            if (bgm) { bgm.currentTime = 0; bgm.play().catch(e => {}); }
+            startBGM(); 
         }
     }
 }
 
 // ==========================================
-// 🛠️ 【改良】直感的なスワイプ長押し＆連動システム
+// 🛠️ UIコントロール（スタート画面＆右上トグル）
 // ==========================================
+
+const btnSoundOn = document.getElementById('btn-sound-on');
+const btnSoundOff = document.getElementById('btn-sound-off');
+const muteSwitch = document.getElementById('mute-switch');
+
+// トップ画面：「音あり」選択
+btnSoundOn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    isMuted = false;
+    btnSoundOn.classList.add('active');
+    btnSoundOff.classList.remove('active');
+    muteSwitch.classList.add('sound-on'); // プレイ用ボタンも連動
+});
+
+// トップ画面：「音なし」選択
+btnSoundOff.addEventListener('click', (e) => {
+    e.stopPropagation();
+    isMuted = true;
+    btnSoundOn.classList.remove('active');
+    btnSoundOff.classList.add('active');
+    muteSwitch.classList.remove('sound-on'); // プレイ用ボタンも連動
+});
+
+// トップ画面：「GAME START」ボタンクリック
+document.getElementById('start-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    handleGameStartAction();
+});
+
+// プレイ中：右上のミュート切り替えボタン
+muteSwitch.addEventListener('click', (e) => {
+    e.stopPropagation(); 
+    const bgm = document.getElementById('bgm');
+
+    if (!isMuted) {
+        isMuted = true;
+        muteSwitch.classList.remove('sound-on');
+        if (bgm) bgm.pause();
+    } else {
+        isMuted = false;
+        muteSwitch.classList.add('sound-on');
+        if (gameState === 'PLAYING' && bgm) {
+            bgm.play().catch(e => {});
+        }
+    }
+});
+
 
 window.addEventListener('keydown', (e) => {
     if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); processInput(); }
@@ -236,12 +429,14 @@ window.addEventListener('keydown', (e) => {
 });
 window.addEventListener('keyup', (e) => {
     if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') { keysPressed[e.code] = false; }
-    if (e.code === 'ArrowDown') { keysPressed[e.code] = false; appKun.isCrouching = false; } // 離したら即解除！
+    if (e.code === 'ArrowDown') { keysPressed[e.code] = false; appKun.isCrouching = false; }
 });
 
 // スマホタッチ処理
 window.addEventListener('touchstart', (e) => { 
-    if (e.cancelable) e.preventDefault();
+    // スタート画面のボタン操作の邪魔をしないように条件分岐
+    if (gameState !== 'START' && e.cancelable) e.preventDefault();
+    
     const touch = e.touches[0];
     touchStartX = touch.clientX;
     touchStartY = touch.clientY; 
@@ -251,20 +446,20 @@ window.addEventListener('touchstart', (e) => {
 }, { passive: false });
 
 window.addEventListener('touchmove', (e) => {
-    if (e.cancelable) e.preventDefault();
     if (gameState !== 'PLAYING') return;
+    if (e.cancelable) e.preventDefault();
 
     const touch = e.touches[0];
     const diffX = touch.clientX - touchStartX;
     const diffY = touch.clientY - touchStartY; 
 
-    // ★【修正】下に30px以上スライドしたら「しゃがみ」ON！
+    // しゃがみON
     if (diffY > 30 && appKun.isGrounded) {
         appKun.isCrouching = true;
         swipeTriggered = true;
     }
 
-    // ★【修正】しゃがんでいない時だけ、左右移動（ドラッグ）を許可する！
+    // 左右移動（ドラッグ）
     if (!appKun.isCrouching && Math.abs(diffX) > 10) {
         isDragging = true;
         appKun.x = playerStartX + diffX * 1.2;
@@ -272,13 +467,12 @@ window.addEventListener('touchmove', (e) => {
 }, { passive: false });
 
 window.addEventListener('touchend', (e) => {
+    if (gameState === 'START') return; // スタート画面の時は標準のクリックイベントに任せる
     if (e.cancelable) e.preventDefault();
     
-    // ★【修正】指を離したら、いかなる状態でもしゃがみを絶対に解除する！
     if (appKun.isCrouching) {
         appKun.isCrouching = false;
     } else if (!isDragging && !swipeTriggered) {
-        // ドラッグもスワイプもしてない純粋タップならジャンプ
         processInput();
     }
     
@@ -377,12 +571,7 @@ function gameLoop() {
     ctx.fillRect(0, 270, canvas.width, 30);
 
     if (gameState === 'START') {
-        ctx.fillStyle = '#2f3542';
-        ctx.font = '28px "DotGothic16"'; 
-        ctx.textAlign = 'center';
-        ctx.fillText('アップ君の筋トレラン', canvas.width / 2, 110);
-        ctx.font = '16px "DotGothic16"'; 
-        ctx.fillText('どこでも画面を触るかスペースでスタート！', canvas.width / 2, 160);
+        // 背景の描画のみ（UIはHTMLで表示）
         ctx.drawImage(images.appKun1, appKun.x, appKun.y, appKun.imgWidth, appKun.imgHeight);
 
     } else if (gameState === 'PLAYING') {
@@ -402,13 +591,12 @@ function gameLoop() {
             }
         }
 
-        // ★【修正】しゃがんでいない時だけ、PCの左右キーボード入力を受け付ける
+        // 左右移動
         if (!appKun.isCrouching) {
             if (keysPressed.ArrowLeft) { appKun.x -= appKun.moveSpeed; }
             if (keysPressed.ArrowRight) { appKun.x += appKun.moveSpeed; }
         }
 
-        // PC操作：下キー長押しによるしゃがみON
         if (appKun.isGrounded && keysPressed.ArrowDown) {
             appKun.isCrouching = true;
         }

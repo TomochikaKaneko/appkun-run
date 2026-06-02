@@ -2,25 +2,21 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>アップ君の筋トレラン - スマホ快適版</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>アップ君の筋トレラン</title>
     <style>
-        html, body {
-            overflow: hidden; /* スマホの無駄なスクロールを完全に防止 */
-            width: 100%;
-            height: 100%;
+        body {
             margin: 0;
             padding: 0;
-        }
-        body {
             background-color: #f0f0f0;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
+            height: 100vh;
             font-family: 'Helvetica Neue', Arial, sans-serif;
             user-select: none;
-            -webkit-user-select: none;
+            overflow: hidden;
         }
         canvas {
             background-color: #7ed6df; 
@@ -38,7 +34,7 @@
 <body>
 
 <canvas id="gameCanvas" width="800" height="300"></canvas>
-<div class="info">画面のどこをタップ・クリックしてもジャンプ！</div>
+<div class="info">PC: スペース or クリック / スマホ: 画面どこでもタップでジャンプ！</div>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
@@ -51,7 +47,9 @@ let isNewRecord = false;
 let currentSpeed = 5;
 let bgOffset = 0;
 
-// 画像の読み込み管理
+// 【追加】二重入力を完全に防止するためのフラグ
+let inputLocked = false;
+
 const images = {};
 const imgSources = {
     appKun1: 'appkun1.png',
@@ -76,7 +74,6 @@ for (let key in imgSources) {
     };
 }
 
-// アップ君の設定
 const appKun = {
     x: 80,
     y: 186,          
@@ -92,36 +89,34 @@ const appKun = {
     jumpForce: -13, 
     isGrounded: true,
     
-    // アニメーション制御用
     animeFrame: 0,     
     animeTimer: 0,     
     landSquat: 0,      
     angle: 0           
 };
 
-// 障害物の定義
-const OBSTACLE_TYPES = [
-    { name: 'dumbbell', width: 40, height: 40, type: 'ground', spawnY: 210 },     
-    { name: 'rack-barbel', width: 60, height: 75, type: 'ground', spawnY: 175 },  
-    { name: 'shaker', width: 40, height: 25, type: 'air', spawnY: 130 }
-];
+const OBSTACLE_TYPES = {
+    dumbbell: { name: 'dumbbell', width: 40, height: 40, type: 'ground', spawnY: 210 },
+    barbel: { name: 'rack-barbel', width: 60, height: 75, type: 'ground', spawnY: 175 },
+    shaker: { name: 'shaker', width: 40, height: 25, type: 'air', spawnY: 160 }
+};
 
 let obstacles = [];
 
-// 【大アプデ】canvasではなく「window(画面全体)」でイベントをキャッチする！
-window.addEventListener('keydown', (e) => {
-    if (e.code === 'Space') { e.preventDefault(); handleInput(); }
-});
-window.addEventListener('touchstart', (e) => { 
-    // 画面ダブルタップで拡大ズームされるスマホの挙動を無効化しつつジャンプ
-    e.preventDefault(); 
-    handleInput(); 
-}, { passive: false });
-window.addEventListener('mousedown', (e) => {
-    handleInput();
-});
+// ==========================================
+// 🛠️ 【根本修正】すべての入力を1つの関数に統合して完全制御
+// ==========================================
 
-function handleInput() {
+function processInput(inputType, e) {
+    // すでに他の入力が処理中の場合は、この瞬間のイベントを完全に無視する
+    if (inputLocked) return;
+    
+    // ロックをかける
+    inputLocked = true;
+    
+    // 0.1秒後にロックを解除する（これでキー押しっぱなしや、クリックの同時発生を防ぐ）
+    setTimeout(() => { inputLocked = false; }, 100);
+
     if (gameState === 'START' || gameState === 'GAMEOVER') {
         initGame();
         gameState = 'PLAYING';
@@ -132,6 +127,30 @@ function handleInput() {
         }
     }
 }
+
+// 1. キーボード（スペースキー）
+window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') { 
+        e.preventDefault(); 
+        processInput('keyboard', e); 
+    }
+});
+
+// 2. スマホ・タブレット（タッチ）
+window.addEventListener('touchstart', (e) => { 
+    if (e.cancelable) e.preventDefault(); 
+    processInput('touch', e);
+}, { passive: false });
+
+// 3. パソコン（マウスの画面どこでもクリック）
+window.addEventListener('mousedown', (e) => {
+    // スマホの「タッチによるエミュレートクリック」はここで除外する
+    if ('ontouchstart' in window && e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents) {
+        return;
+    }
+    processInput('mouse', e);
+});
+
 
 function initGame() {
     distance = 0;
@@ -149,26 +168,23 @@ function initGame() {
     spawnObstacleGroup();
 }
 
-function createObstacle(baseX, type) {
+function createObstacle(baseX, typeData) {
     let specialMove = 'none';
     let waveAmplitude = 0;
 
-    if (type.type === 'air' && distance >= 500) {
-        const moveRand = Math.random();
-        if (moveRand > 0.4) {
-            specialMove = 'randomWave'; 
-            waveAmplitude = 20 + Math.random() * 40; 
-        }
+    if (typeData.name === 'shaker' && distance >= 500) {
+        specialMove = 'randomWave'; 
+        waveAmplitude = 15 + Math.random() * 20; 
     }
 
     return {
         x: baseX,
-        y: type.spawnY,
-        baseY: type.spawnY,
-        width: type.width,
-        height: type.height,
-        name: type.name,
-        type: type.type,
+        y: typeData.spawnY,
+        baseY: typeData.spawnY,
+        width: typeData.width,
+        height: typeData.height,
+        name: typeData.name,
+        type: typeData.type,
         waveAngle: Math.random() * Math.PI, 
         waveAmplitude: waveAmplitude, 
         specialMove: specialMove 
@@ -176,26 +192,28 @@ function createObstacle(baseX, type) {
 }
 
 function spawnObstacleGroup() {
-    let count = 1;
-    if (distance >= 1000) {
-        const rand = Math.random();
-        if (rand > 0.8) count = 3;
-        else if (rand > 0.5) count = 2;
-    }
+    let currentX = 850;
 
-    let currentX = 800;
-    const type = OBSTACLE_TYPES[Math.floor(Math.random() * OBSTACLE_TYPES.length)];
-
-    if (type.name === 'rack-barbel' && count > 2) {
-        count = 2;
-    }
-
-    for (let i = 0; i < count; i++) {
-        if (i > 0) {
-            let spacing = type.name === 'rack-barbel' ? 250 : 180;
-            currentX += type.width + spacing + Math.random() * 70;
+    if (distance < 1000) {
+        let keys = Object.keys(OBSTACLE_TYPES);
+        let randKey = keys[Math.floor(Math.random() * keys.length)];
+        obstacles.push(createObstacle(currentX, OBSTACLE_TYPES[randKey]));
+    } else {
+        let comboPattern = Math.floor(Math.random() * 4);
+        
+        if (comboPattern === 0) {
+            obstacles.push(createObstacle(currentX, OBSTACLE_TYPES.barbel));
+            obstacles.push(createObstacle(currentX + 240, OBSTACLE_TYPES.dumbbell));
+        } else if (comboPattern === 1) {
+            obstacles.push(createObstacle(currentX, OBSTACLE_TYPES.dumbbell));
+            obstacles.push(createObstacle(currentX + 160, OBSTACLE_TYPES.shaker));
+        } else if (comboPattern === 2) {
+            obstacles.push(createObstacle(currentX, OBSTACLE_TYPES.shaker));
+            obstacles.push(createObstacle(currentX + 180, OBSTACLE_TYPES.barbel));
+        } else {
+            obstacles.push(createObstacle(currentX, OBSTACLE_TYPES.dumbbell));
+            obstacles.push(createObstacle(currentX + 180, OBSTACLE_TYPES.dumbbell));
         }
-        obstacles.push(createObstacle(currentX, type));
     }
 }
 
@@ -225,9 +243,9 @@ function gameLoop() {
         ctx.fillStyle = '#2f3542';
         ctx.font = 'bold 28px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('アップ君の筋トレラン', canvas.width / 2, 110);
+        ctx.fillText('アップ君の筋トレラン -マゾ仕様-', canvas.width / 2, 110);
         ctx.font = '18px sans-serif';
-        ctx.fillText('画面のどこかを触ってスタート！', canvas.width / 2, 160);
+        ctx.fillText('どこでも画面を触るかスペースでスタート！', canvas.width / 2, 160);
 
         ctx.drawImage(images.appKun1, appKun.x, appKun.y, appKun.imgWidth, appKun.imgHeight);
 
@@ -240,15 +258,14 @@ function gameLoop() {
 
         if (newMilestone > oldMilestone) {
             if (distance < 1000) {
-                currentSpeed += 1.0;
+                currentSpeed += 0.8;
             } else {
-                let minSpeed = 5.0;
-                let maxSpeed = 10.0 + (newMilestone - 10);
+                let minSpeed = 6.0;
+                let maxSpeed = 11.0 + (newMilestone - 10) * 0.5;
                 currentSpeed = minSpeed + Math.random() * (maxSpeed - minSpeed); 
             }
         }
 
-        // --- アップ君の物理演算 ＆ アニメーション ---
         appKun.vy += appKun.gravity;
         appKun.y += appKun.vy;
 
@@ -262,7 +279,7 @@ function gameLoop() {
             appKun.angle = 0; 
             
             appKun.animeTimer += currentSpeed;
-            if (appKun.animeTimer > 60) { 
+            if (appKun.animeTimer > 60) {
                 appKun.animeFrame = appKun.animeFrame === 0 ? 1 : 0;
                 appKun.animeTimer = 0;
             }
@@ -275,16 +292,14 @@ function gameLoop() {
             appKun.landSquat -= 0.4;
         }
 
-        // --- 障害物の移動・変化・判定 ---
         for (let i = obstacles.length - 1; i >= 0; i--) {
             let obs = obstacles[i];
             obs.x -= currentSpeed; 
 
             if (obs.specialMove === 'randomWave') {
-                obs.waveAngle += 0.06; 
+                obs.waveAngle += 0.07; 
                 let offset = Math.sin(obs.waveAngle) * obs.waveAmplitude;
-                let newY = obs.baseY + offset; 
-                obs.y = Math.max(100, Math.min(195, newY)); 
+                obs.y = Math.max(120, Math.min(200, obs.baseY + offset)); 
             }
 
             if (checkCollision(appKun, obs)) {
@@ -304,7 +319,6 @@ function gameLoop() {
             spawnObstacleGroup();
         }
 
-        // --- 障害物の描画 ---
         obstacles.forEach(obs => {
             if (obs.name === 'dumbbell') {
                 ctx.drawImage(images.dumbbell, obs.x, obs.y, obs.width, obs.height);
@@ -315,7 +329,6 @@ function gameLoop() {
             }
         });
 
-        // --- アップ君の変形パタパタ描画 ---
         ctx.save();
         let drawY = appKun.y + appKun.landSquat;
         ctx.translate(appKun.x + appKun.imgWidth / 2, drawY + appKun.imgHeight / 2);
@@ -369,7 +382,7 @@ function gameLoop() {
 
         ctx.fillStyle = '#fff';
         ctx.font = '16px sans-serif';
-        ctx.fillText('画面を触って再挑戦', canvas.width / 2, 240);
+        ctx.fillText('どこでも画面を触るかスペースで再挑戦', canvas.width / 2, 240);
     }
 
     requestAnimationFrame(gameLoop);

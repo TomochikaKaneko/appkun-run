@@ -409,11 +409,17 @@ window.addEventListener('keyup', (e) => {
     if (e.code === 'ArrowDown') { keysPressed[e.code] = false; appKun.isCrouching = false; }
 });
 
-// ★【大改造】スマホタッチ移動処理（ドラッグ速度のPC完全同期版）
+// スマホタッチスケーリング対応（★バグ完全修正版）
 window.addEventListener('touchstart', (e) => { 
+    // 💡【超重要】もし触った場所が「ミュートスイッチ」か「スタート画面のボタン類」なら、画面全体のジャンプ処理を絶対に発動させない！
+    if (e.target.closest('#mute-switch') || e.target.closest('#start-screen')) {
+        return; // ここで処理を終了して、ボタン本来のクリック機能を優先させる
+    }
+
     if (gameState !== 'START' && e.cancelable) e.preventDefault();
     const touch = e.touches[0];
     
+    // ★縮小された画面に合わせて、タッチの移動比率を正しく再計算する仕掛け
     const wrapper = document.getElementById('game-wrapper');
     const rect = wrapper.getBoundingClientRect();
     const currentScale = rect.width / 800;
@@ -421,6 +427,7 @@ window.addEventListener('touchstart', (e) => {
     touchStartX = touch.clientX / currentScale;
     touchStartY = touch.clientY / currentScale; 
     
+    playerStartX = appKun.x;
     isDragging = false; 
     swipeTriggered = false;
     touchMoveDirection = 0; // 静止状態にリセット

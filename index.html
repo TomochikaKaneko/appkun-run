@@ -2,26 +2,38 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
     
     <title>アップ君の筋トレラン</title>
     <style>
-        body {
+        /* ★【大改造】画面全体をゲームの土台にするスタイル */
+        html, body {
             margin: 0;
             padding: 0;
+            width: 100%;
+            height: 100%;
             background-color: #f0f0f0;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            height: 100vh;
             font-family: "DotGothic16", sans-serif; 
             user-select: none;
             overflow: hidden;
+            touch-action: none; /* スマホのダブルタップズームやスクロールを完全禁止 */
         }
+
+        /* ★ゲーム全体を包む箱（ここで比率を800x300に固定して縮小拡大する） */
+        #game-wrapper {
+            position: relative;
+            width: 800px;
+            height: 300px;
+            transform-origin: center center; /* 真ん中を基準に拡大縮小 */
+        }
+
         #game-container {
             position: relative;
             width: 800px;
@@ -34,15 +46,22 @@
             box-sizing: border-box;
             display: block;
         }
+
+        /* 下部の操作説明テキスト（画面が縮んでもはみ出さない位置へ） */
         .info {
-            margin-top: 10px;
-            font-size: 16px;
+            position: absolute;
+            bottom: -50px; /* ★位置を-35pxから-50pxに下げて余裕を持たせる */
+            left: 0;
+            width: 100%;
+            font-size: 14px;
             color: #333;
             letter-spacing: 1px;
             text-align: center;
+            pointer-events: none;
+            line-height: 1.6; /* 2行の文字間隔を少し広げて見やすく */
         }
 
-        /* ★【修正】ゲームエリアの右上に配置されるミュートスイッチ ★ */
+        /* ゲームエリアの右上に配置されるミュートスイッチ */
         #mute-switch {
             position: absolute;
             top: 15px;
@@ -54,32 +73,28 @@
             background-color: rgba(255, 255, 255, 0.85);
             border: 3px solid #333;
             border-radius: 6px;
-            display: none; /* プレイ中・ゲームオーバー中だけ表示 */
+            display: none; 
             justify-content: center;
             align-items: center;
             box-sizing: border-box;
         }
-        #mute-switch::after {
-            content: '🔇'; /* 初期値：音なし(ミュート) */
-            font-size: 24px;
-        }
-        #mute-switch.sound-on::after {
-            content: '🔊'; /* 音あり時 */
-        }
+        #mute-switch::after { content: '🔇'; font-size: 24px; }
+        #mute-switch.sound-on::after { content: '🔊'; }
 
-        /* ★【新設】スタート画面のUIレイアウト ★ */
+        /* スタート画面のUIレイアウト */
         #start-screen {
             position: absolute;
-            top: 4px;
+            top: 4px;   /* キャンバスの枠線（4px）に合わせる */
             left: 4px;
-            width: 792px; /* 内枠のサイズ */
-            height: 292px;
-            background-color: rgba(126, 214, 223, 0.9); /* キャンバス背景に合わせた薄い青 */
+            width: 792px;  /* 800px - 枠線左右8px分 */
+            height: 292px; /* 300px - 枠線上下8px分（全面を覆う） */
+            background-color: #7ed6df; /* ★背景画像と同じ水色にして完全に一体化させる */
             z-index: 50;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
+            box-sizing: border-box;
         }
         .start-title {
             font-size: 32px;
@@ -90,17 +105,16 @@
         .start-subtitle {
             font-size: 15px;
             color: #57606f;
-            margin-bottom: 25px;
+            margin-bottom: 20px;
         }
         
-        /* 音選択トグルスイッチ */
         .audio-select-container {
             display: flex;
             background: #cbd5e1;
             padding: 5px;
             border-radius: 8px;
             border: 3px solid #333;
-            margin-bottom: 25px;
+            margin-bottom: 20px;
         }
         .audio-btn {
             padding: 8px 18px;
@@ -121,7 +135,6 @@
             font-weight: bold;
         }
 
-        /* ゲーム開始ボタン */
         #start-btn {
             font-family: "DotGothic16", sans-serif;
             font-size: 22px;
@@ -137,31 +150,56 @@
             transform: translateY(4px);
             box-shadow: none;
         }
+
+        /* ★【新設】スマホ縦画面のときに「横にむけてね」と警告する画面 */
+        #orientation-warning {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-color: #2f3542;
+            color: white;
+            z-index: 999;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-size: 20px;
+            text-align: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .warning-icon { font-size: 50px; margin-bottom: 20px; }
     </style>
 </head>
 <body>
 
-<div id="game-container">
-    <div id="mute-switch"></div>
-
-    <div id="start-screen">
-        <div class="start-title">アップ君の筋トレラン</div>
-        <!-- <div class="start-subtitle">〜超マゾ仕様ランニングアクション〜</div> -->
-        
-        <div class="audio-select-container">
-            <button id="btn-sound-off" class="audio-btn active">🔇 音なし (推奨)</button>
-            <button id="btn-sound-on" class="audio-btn">🔊 音あり</button>
-        </div>
-
-        <button id="start-btn">GAME START</button>
-    </div>
-
-    <canvas id="gameCanvas" width="800" height="300"></canvas>
+<div id="orientation-warning">
+    <div class="warning-icon">🔄</div>
+    画面を横向きに回転させてね！<br>
+    <span style="font-size: 14px; color: #a4b0be; margin-top: 10px;">（スマホの画面回転ロックを解除してね）</span>
 </div>
 
-<div class="info">
-    ＰＣ：[←][→]移動 / [↑]orスペースでジャンプ / [↓]長押しでしゃがむ<br>
-    スマホ：左右ドラッグで移動 / タップでジャンプ / 下スワイプ長押しでしゃがむ！
+<div id="game-wrapper">
+    <div id="game-container">
+        <div id="mute-switch"></div>
+
+        <div id="start-screen">
+            <div class="start-title">アップ君の筋トレラン</div>
+            <div class="start-subtitle">〜狙え除脂肪〜</div>
+            
+            <div class="audio-select-container">
+                <button id="btn-sound-off" class="audio-btn active">🔇 音なし</button>
+                <button id="btn-sound-on" class="audio-btn">🔊 音あり</button>
+            </div>
+
+            <button id="start-btn">GAME START</button>
+        </div>
+
+        <canvas id="gameCanvas" width="800" height="300"></canvas>
+    </div>
+    <div class="info">
+        ＰＣ：[←][→]移動 / [↑]orスペースでジャンプ / [↓]長押しでしゃがむ<br>
+        スマホ：左右移動ドラッグ / タップジャンプ / 下スワイプ長押ししゃがみ
+    </div>
 </div>
 
 <audio id="bgm" src="Above_The_Spikes.mp3" loop></audio>
@@ -179,70 +217,33 @@ let bgOffset = 0;
 
 let inputLocked = false;
 let gameOverTimer = 0; 
-
-// ★【修正】初期値を「ミュート(音なし)」に設定 ★
 let isMuted = true;
 
-// キーボードの押し状態
-const keysPressed = {
-    ArrowLeft: false,
-    ArrowRight: false,
-    ArrowDown: false
-};
+const keysPressed = { ArrowLeft: false, ArrowRight: false, ArrowDown: false };
+let touchStartX = 0; let touchStartY = 0; let playerStartX = 0;
+let isDragging = false; let swipeTriggered = false; 
 
-// スマホのタッチ管理変数
-let touchStartX = 0;
-let touchStartY = 0; 
-let playerStartX = 0;
-let isDragging = false;
-let swipeTriggered = false; 
+// ★【新設】スマホのドラッグ方向を管理する変数（-1: 左, 1: 右, 0: 静止）
+let touchMoveDirection = 0; 
 
 const images = {};
 const imgSources = {
-    appKun1: 'appkun1.png',
-    appKun2: 'appkun2.png',
-    appKun3: 'appkun3.png', 
-    bg: 'bg_park.png',
-    dumbbell: 'dumbbell.png',
-    barbel: 'barbel.png',
-    shaker: 'shaker.png'
+    appKun1: 'appkun1.png', appKun2: 'appkun2.png', appKun3: 'appkun3.png', 
+    bg: 'bg_park.png', dumbbell: 'dumbbell.png', barbel: 'barbel.png', shaker: 'shaker.png'
 };
 
 let loadedImages = 0;
 const totalImages = Object.keys(imgSources).length;
-
 for (let key in imgSources) {
-    images[key] = new Image();
-    images[key].src = imgSources[key];
-    images[key].onload = () => {
-        loadedImages++;
-        if (loadedImages === totalImages) {
-            gameLoop();
-        }
-    };
+    images[key] = new Image(); images[key].src = imgSources[key];
+    images[key].onload = () => { loadedImages++; if (loadedImages === totalImages) { gameLoop(); } };
 }
 
 const appKun = {
-    x: 80,
-    y: 186,          
-    baseY: 186,
-    imgWidth: 64,    
-    imgHeight: 64,
-    hitboxOffsetX: 12, 
-    hitboxOffsetY: 14,
-    width: 40,       
-    height: 50,
-    vy: 0,
-    gravity: 0.6,
-    jumpForce: -13, 
-    isGrounded: true,
-    isCrouching: false, 
-    
-    moveSpeed: 5,
-    animeFrame: 0,     
-    animeTimer: 0,     
-    landSquat: 0,      
-    angle: 0           
+    x: 80, y: 186, baseY: 186, imgWidth: 64, imgHeight: 64,
+    hitboxOffsetX: 12, hitboxOffsetY: 14, width: 40, height: 50,
+    vy: 0, gravity: 0.6, jumpForce: -13, isGrounded: true, isCrouching: false, 
+    moveSpeed: 5, animeFrame: 0, animeTimer: 0, landSquat: 0, angle: 0           
 };
 
 const OBSTACLE_TYPES = {
@@ -250,28 +251,58 @@ const OBSTACLE_TYPES = {
     barbel: { name: 'rack-barbel', width: 60, height: 75, type: 'ground', spawnY: 175 },
     shaker: { name: 'shaker', width: 40, height: 25, type: 'air', spawnY: 160 }
 };
-
 let obstacles = [];
 
 // ==========================================
-// 🔊 プログラムサウンドシステム
+// 📱 ★【新設】全画面パーフェクトフィット・レスポンシブシステム ★
+// ==========================================
+function resizeGame() {
+    const wrapper = document.getElementById('game-wrapper');
+    const warning = document.getElementById('orientation-warning');
+    
+    const windowWidth = window.innerWidth;
+    const windowHeight = window.innerHeight;
+
+    // スマホが縦画面（横幅より縦が長い）の場合は警告を出す
+    if (windowWidth < windowHeight && windowWidth < 768) {
+        warning.style.display = 'flex';
+        wrapper.style.display = 'none';
+        return;
+    } else {
+        warning.style.display = 'none';
+        wrapper.style.display = 'block';
+    }
+
+    // 800x350（ゲーム領域300px + 下部テキスト35px分）の比率で画面に収まるスケールを計算
+    const baseWidth = 800;
+    const baseHeight = 340;
+
+    const scaleX = windowWidth / baseWidth;
+    const scaleY = windowHeight / baseHeight;
+    const scale = Math.min(scaleX, scaleY, 1.5); // 最大1.5倍まで拡大
+
+    // CSSのプロパティを使って、全体を綺麗に縮小拡大する
+    wrapper.style.transform = `scale(${scale})`;
+}
+
+// 画面サイズが変わった時や、スマホを回転させた時に自動計算
+window.addEventListener('resize', resizeGame);
+window.addEventListener('orientationchange', resizeGame);
+window.addEventListener('DOMContentLoaded', resizeGame);
+
+// ==========================================
+// 🔊 サウンドシステム
 // ==========================================
 let audioCtx = null;
-
 function playJumpSound() {
     if (isMuted) return; 
     try {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.type = 'square'; 
-        const now = audioCtx.currentTime;
-        osc.frequency.setValueAtTime(180, now); 
-        osc.frequency.exponentialRampToValueAtTime(850, now + 0.15); 
-        gain.gain.setValueAtTime(0.6, now); 
-        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
-        osc.connect(gain); gain.connect(audioCtx.destination);
-        osc.start(now); osc.stop(now + 0.15); 
+        const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+        osc.type = 'square'; const now = audioCtx.currentTime;
+        osc.frequency.setValueAtTime(180, now); osc.frequency.exponentialRampToValueAtTime(850, now + 0.15); 
+        gain.gain.setValueAtTime(0.6, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+        osc.connect(gain); gain.connect(audioCtx.destination); osc.start(now); osc.stop(now + 0.15); 
     } catch(e) {}
 }
 
@@ -290,10 +321,8 @@ function playGameOverSound() {
             if (note.f > 0) {
                 const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
                 osc.type = 'square'; osc.frequency.setValueAtTime(note.f, now + currentOffset);
-                gain.gain.setValueAtTime(0.4, now + currentOffset);
-                gain.gain.linearRampToValueAtTime(0.01, now + currentOffset + note.d);
-                osc.connect(gain); gain.connect(audioCtx.destination);
-                osc.start(now + currentOffset); osc.stop(now + currentOffset + note.d);
+                gain.gain.setValueAtTime(0.4, now + currentOffset); gain.gain.linearRampToValueAtTime(0.01, now + currentOffset + note.d);
+                osc.connect(gain); gain.connect(audioCtx.destination); osc.start(now + currentOffset); osc.stop(now + currentOffset + note.d);
             }
             currentOffset += note.d;
         });
@@ -315,10 +344,8 @@ function playNewRecordSound() {
             if (note.f > 0) {
                 const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
                 osc.type = 'square'; osc.frequency.setValueAtTime(note.f, now + currentOffset);
-                gain.gain.setValueAtTime(0.35, now + currentOffset);
-                gain.gain.linearRampToValueAtTime(0.01, now + currentOffset + note.d);
-                osc.connect(gain); gain.connect(audioCtx.destination);
-                osc.start(now + currentOffset); osc.stop(now + currentOffset + note.d);
+                gain.gain.setValueAtTime(0.35, now + currentOffset); gain.gain.linearRampToValueAtTime(0.01, now + currentOffset + note.d);
+                osc.connect(gain); gain.connect(audioCtx.destination); osc.start(now + currentOffset); osc.stop(now + currentOffset + note.d);
             }
             currentOffset += note.d;
         });
@@ -328,22 +355,13 @@ function playNewRecordSound() {
 function startBGM() {
     if (isMuted) return; 
     const bgm = document.getElementById('bgm');
-    if (bgm) { 
-        bgm.currentTime = 0; 
-        bgm.play().catch(e => {
-            console.log("BGM play blocked");
-        }); 
-    }
+    if (bgm) { bgm.currentTime = 0; bgm.play().catch(e => {}); }
 }
 
-// ★【修正】ゲーム本番スタートの処理関数 ★
 function handleGameStartAction() {
     if (gameState !== 'START') return;
-    
-    // UIを非表示にしてゲーム画面、右上ボタンを出す
     document.getElementById('start-screen').style.display = 'none';
     document.getElementById('mute-switch').style.display = 'flex';
-    
     initGame();
     gameState = 'PLAYING';
     startBGM();
@@ -351,76 +369,33 @@ function handleGameStartAction() {
 
 function processInput() {
     if (inputLocked) return;
-    inputLocked = true;
-    setTimeout(() => { inputLocked = false; }, 100);
+    inputLocked = true; setTimeout(() => { inputLocked = false; }, 100);
 
     if (gameState === 'START') {
-        handleGameStartAction(); // キー入力でもスタート可能に
+        handleGameStartAction();
     } else if (gameState === 'PLAYING') {
         if (appKun.isGrounded && !appKun.isCrouching) {
-            appKun.vy = appKun.jumpForce;
-            appKun.isGrounded = false;
-            playJumpSound(); 
+            appKun.vy = appKun.jumpForce; appKun.isGrounded = false; playJumpSound(); 
         }
     } else if (gameState === 'GAMEOVER') {
-        if (gameOverTimer > 48) { 
-            initGame();
-            gameState = 'PLAYING';
-            startBGM(); 
-        }
+        if (gameOverTimer > 48) { initGame(); gameState = 'PLAYING'; startBGM(); }
     }
 }
 
-// ==========================================
-// 🛠️ UIコントロール（スタート画面＆右上トグル）
-// ==========================================
-
+// UIイベント登録
 const btnSoundOn = document.getElementById('btn-sound-on');
 const btnSoundOff = document.getElementById('btn-sound-off');
 const muteSwitch = document.getElementById('mute-switch');
 
-// トップ画面：「音あり」選択
-btnSoundOn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    isMuted = false;
-    btnSoundOn.classList.add('active');
-    btnSoundOff.classList.remove('active');
-    muteSwitch.classList.add('sound-on'); // プレイ用ボタンも連動
-});
+btnSoundOn.addEventListener('click', (e) => { e.stopPropagation(); isMuted = false; btnSoundOn.classList.add('active'); btnSoundOff.classList.remove('active'); muteSwitch.classList.add('sound-on'); });
+btnSoundOff.addEventListener('click', (e) => { e.stopPropagation(); isMuted = true; btnSoundOn.classList.remove('active'); btnSoundOff.classList.add('active'); muteSwitch.classList.remove('sound-on'); });
+document.getElementById('start-btn').addEventListener('click', (e) => { e.stopPropagation(); handleGameStartAction(); });
 
-// トップ画面：「音なし」選択
-btnSoundOff.addEventListener('click', (e) => {
-    e.stopPropagation();
-    isMuted = true;
-    btnSoundOn.classList.remove('active');
-    btnSoundOff.classList.add('active');
-    muteSwitch.classList.remove('sound-on'); // プレイ用ボタンも連動
-});
-
-// トップ画面：「GAME START」ボタンクリック
-document.getElementById('start-btn').addEventListener('click', (e) => {
-    e.stopPropagation();
-    handleGameStartAction();
-});
-
-// プレイ中：右上のミュート切り替えボタン
 muteSwitch.addEventListener('click', (e) => {
-    e.stopPropagation(); 
-    const bgm = document.getElementById('bgm');
-
-    if (!isMuted) {
-        isMuted = true;
-        muteSwitch.classList.remove('sound-on');
-        if (bgm) bgm.pause();
-    } else {
-        isMuted = false;
-        muteSwitch.classList.add('sound-on');
-        if (gameState === 'PLAYING' && bgm) {
-            bgm.play().catch(e => {});
-        }
-    }
+    e.stopPropagation(); const bgm = document.getElementById('bgm');
+    if (!isMuted) { isMuted = true; muteSwitch.classList.remove('sound-on'); if (bgm) bgm.pause(); } 
+    else { isMuted = false; muteSwitch.classList.add('sound-on'); if (gameState === 'PLAYING' && bgm) { bgm.play().catch(e => {}); } }
 });
-
 
 window.addEventListener('keydown', (e) => {
     if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); processInput(); }
@@ -432,17 +407,21 @@ window.addEventListener('keyup', (e) => {
     if (e.code === 'ArrowDown') { keysPressed[e.code] = false; appKun.isCrouching = false; }
 });
 
-// スマホタッチ処理
+// ★【大改造】スマホタッチ移動処理（ドラッグ速度のPC完全同期版）
 window.addEventListener('touchstart', (e) => { 
-    // スタート画面のボタン操作の邪魔をしないように条件分岐
     if (gameState !== 'START' && e.cancelable) e.preventDefault();
-    
     const touch = e.touches[0];
-    touchStartX = touch.clientX;
-    touchStartY = touch.clientY; 
-    playerStartX = appKun.x;
-    isDragging = false;
+    
+    const wrapper = document.getElementById('game-wrapper');
+    const rect = wrapper.getBoundingClientRect();
+    const currentScale = rect.width / 800;
+    
+    touchStartX = touch.clientX / currentScale;
+    touchStartY = touch.clientY / currentScale; 
+    
+    isDragging = false; 
     swipeTriggered = false;
+    touchMoveDirection = 0; // 静止状態にリセット
 }, { passive: false });
 
 window.addEventListener('touchmove', (e) => {
@@ -450,247 +429,142 @@ window.addEventListener('touchmove', (e) => {
     if (e.cancelable) e.preventDefault();
 
     const touch = e.touches[0];
-    const diffX = touch.clientX - touchStartX;
-    const diffY = touch.clientY - touchStartY; 
+    const wrapper = document.getElementById('game-wrapper');
+    const rect = wrapper.getBoundingClientRect();
+    const currentScale = rect.width / 800;
+
+    const currentX = touch.clientX / currentScale;
+    const currentY = touch.clientY / currentScale;
+
+    const diffX = currentX - touchStartX;
+    const diffY = currentY - touchStartY; 
 
     // しゃがみON
-    if (diffY > 30 && appKun.isGrounded) {
-        appKun.isCrouching = true;
-        swipeTriggered = true;
+    if (diffY > 30 && appKun.isGrounded) { 
+        appKun.isCrouching = true; 
+        swipeTriggered = true; 
+        touchMoveDirection = 0; // しゃがみ中は横移動を停止
+        return;
     }
 
-    // 左右移動（ドラッグ）
-    if (!appKun.isCrouching && Math.abs(diffX) > 10) {
-        isDragging = true;
-        appKun.x = playerStartX + diffX * 1.2;
+    // 左右移動の判定（一定距離以上指が動いたらフラグを立てる）
+    if (!appKun.isCrouching) {
+        if (Math.abs(diffX) > 15) {
+            isDragging = true;
+            touchMoveDirection = diffX > 0 ? 1 : -1; // 指の移動方向だけを記録
+        } else {
+            touchMoveDirection = 0;
+        }
     }
 }, { passive: false });
 
 window.addEventListener('touchend', (e) => {
-    if (gameState === 'START') return; // スタート画面の時は標準のクリックイベントに任せる
+    if (gameState === 'START') return;
     if (e.cancelable) e.preventDefault();
-    
-    if (appKun.isCrouching) {
-        appKun.isCrouching = false;
-    } else if (!isDragging && !swipeTriggered) {
-        processInput();
-    }
-    
-    isDragging = false;
-    swipeTriggered = false;
+    if (appKun.isCrouching) { appKun.isCrouching = false; } 
+    else if (!isDragging && !swipeTriggered) { processInput(); }
+    isDragging = false; swipeTriggered = false;
+    touchMoveDirection = 0; // 指を離したら移動を止める
 });
 
-
 function initGame() {
-    distance = 0;
-    currentSpeed = 5;
-    bgOffset = 0;
-    isNewRecord = false;
-    appKun.x = 80;
-    appKun.y = appKun.baseY; 
-    appKun.vy = 0;
-    appKun.isGrounded = true;
-    appKun.isCrouching = false; 
-    appKun.animeFrame = 0;
-    appKun.animeTimer = 0;
-    appKun.landSquat = 0;
-    appKun.angle = 0;
-    obstacles = [];
-    gameOverTimer = 0; 
-    keysPressed.ArrowLeft = false;
-    keysPressed.ArrowRight = false;
-    keysPressed.ArrowDown = false;
+    distance = 0; currentSpeed = 5; bgOffset = 0; isNewRecord = false;
+    appKun.x = 80; appKun.y = appKun.baseY; appKun.vy = 0; appKun.isGrounded = true; appKun.isCrouching = false; 
+    appKun.animeFrame = 0; appKun.animeTimer = 0; appKun.landSquat = 0; appKun.angle = 0;
+    obstacles = []; gameOverTimer = 0; keysPressed.ArrowLeft = false; keysPressed.ArrowRight = false; keysPressed.ArrowDown = false;
     spawnObstacleGroup();
 }
 
 function createObstacle(baseX, typeData) {
-    let specialMove = 'none';
-    let waveAmplitude = 0;
-    if (typeData.name === 'shaker' && distance >= 500) {
-        specialMove = 'randomWave'; 
-        waveAmplitude = 15 + Math.random() * 20; 
-    }
-    return {
-        x: baseX,
-        y: typeData.spawnY,
-        baseY: typeData.spawnY,
-        width: typeData.width,
-        height: typeData.height,
-        name: typeData.name,
-        type: typeData.type,
-        waveAngle: Math.random() * Math.PI, 
-        waveAmplitude: waveAmplitude, 
-        specialMove: specialMove 
-    };
+    let specialMove = 'none'; let waveAmplitude = 0;
+    if (typeData.name === 'shaker' && distance >= 500) { specialMove = 'randomWave'; waveAmplitude = 15 + Math.random() * 20; }
+    return { x: baseX, y: typeData.spawnY, baseY: typeData.spawnY, width: typeData.width, height: typeData.height, name: typeData.name, type: typeData.type, waveAngle: Math.random() * Math.PI, waveAmplitude: waveAmplitude, specialMove: specialMove };
 }
 
 function spawnObstacleGroup() {
     let currentX = 850;
     if (distance < 1000) {
-        let keys = Object.keys(OBSTACLE_TYPES);
-        let randKey = keys[Math.floor(Math.random() * keys.length)];
+        let keys = Object.keys(OBSTACLE_TYPES); let randKey = keys[Math.floor(Math.random() * keys.length)];
         obstacles.push(createObstacle(currentX, OBSTACLE_TYPES[randKey]));
     } else {
         let comboPattern = Math.floor(Math.random() * 4);
-        if (comboPattern === 0) {
-            obstacles.push(createObstacle(currentX, OBSTACLE_TYPES.barbel));
-            obstacles.push(createObstacle(currentX + 240, OBSTACLE_TYPES.dumbbell));
-        } else if (comboPattern === 1) {
-            obstacles.push(createObstacle(currentX, OBSTACLE_TYPES.dumbbell));
-            obstacles.push(createObstacle(currentX + 200, OBSTACLE_TYPES.shaker));
-        } else if (comboPattern === 2) {
-            obstacles.push(createObstacle(currentX, OBSTACLE_TYPES.shaker));
-            obstacles.push(createObstacle(currentX + 220, OBSTACLE_TYPES.barbel));
-        } else {
-            obstacles.push(createObstacle(currentX, OBSTACLE_TYPES.dumbbell));
-            obstacles.push(createObstacle(currentX + 180, OBSTACLE_TYPES.dumbbell));
-        }
+        if (comboPattern === 0) { obstacles.push(createObstacle(currentX, OBSTACLE_TYPES.barbel)); obstacles.push(createObstacle(currentX + 240, OBSTACLE_TYPES.dumbbell)); } 
+        else if (comboPattern === 1) { obstacles.push(createObstacle(currentX, OBSTACLE_TYPES.dumbbell)); obstacles.push(createObstacle(currentX + 200, OBSTACLE_TYPES.shaker)); } 
+        else if (comboPattern === 2) { obstacles.push(createObstacle(currentX, OBSTACLE_TYPES.shaker)); obstacles.push(createObstacle(currentX + 220, OBSTACLE_TYPES.barbel)); } 
+        else { obstacles.push(createObstacle(currentX, OBSTACLE_TYPES.dumbbell)); obstacles.push(createObstacle(currentX + 180, OBSTACLE_TYPES.dumbbell)); }
     }
 }
 
 function checkCollision(player, rect2) {
-    const pEx = player.x + player.hitboxOffsetX;
-    const pEy = player.y + player.hitboxOffsetY;
-    return pEx < rect2.x + rect2.width &&
-           pEx + player.width > rect2.x &&
-           pEy < rect2.y + rect2.height &&
-           pEy + player.height > rect2.y;
+    const pEx = player.x + player.hitboxOffsetX; const pEy = player.y + player.hitboxOffsetY;
+    return pEx < rect2.x + rect2.width && pEx + player.width > rect2.x && pEy < rect2.y + rect2.height && pEy + player.height > rect2.y;
 }
 
 function gameLoop() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    if (gameState === 'PLAYING') {
-        bgOffset = (bgOffset - currentSpeed * 0.5) % 800;
-    }
-    
-    ctx.drawImage(images.bg, bgOffset, 0, 800, 270);
-    ctx.drawImage(images.bg, bgOffset + 800, 0, 800, 270);
-
-    ctx.fillStyle = '#1e8449';
-    ctx.fillRect(0, 270, canvas.width, 30);
+    if (gameState === 'PLAYING') { bgOffset = (bgOffset - currentSpeed * 0.5) % 800; }
+    ctx.drawImage(images.bg, bgOffset, 0, 800, 270); ctx.drawImage(images.bg, bgOffset + 800, 0, 800, 270);
+    ctx.fillStyle = '#1e8449'; ctx.fillRect(0, 270, canvas.width, 30);
 
     if (gameState === 'START') {
-        // 背景の描画のみ（UIはHTMLで表示）
         ctx.drawImage(images.appKun1, appKun.x, appKun.y, appKun.imgWidth, appKun.imgHeight);
-
     } else if (gameState === 'PLAYING') {
-        let previousDistance = distance;
-        distance += currentSpeed * 0.05;
-        
-        let oldMilestone = Math.floor(previousDistance / 100);
-        let newMilestone = Math.floor(distance / 100);
-
+        let previousDistance = distance; distance += currentSpeed * 0.05;
+        let oldMilestone = Math.floor(previousDistance / 100); let newMilestone = Math.floor(distance / 100);
         if (newMilestone > oldMilestone) {
-            if (distance < 1000) {
-                currentSpeed += 0.8;
-            } else {
-                let minSpeed = 6.0;
-                let maxSpeed = 11.0 + (newMilestone - 10) * 0.5;
-                currentSpeed = minSpeed + Math.random() * (maxSpeed - minSpeed); 
-            }
+            if (distance < 1000) { currentSpeed += 0.8; } 
+            else { let minSpeed = 6.0; let maxSpeed = 11.0 + (newMilestone - 10) * 0.5; currentSpeed = minSpeed + Math.random() * (maxSpeed - minSpeed); }
         }
 
-        // 左右移動
+        // ★【修正】左右移動の処理（PCのキーボードとスマホのドラッグ状態を完全同期）
         if (!appKun.isCrouching) {
-            if (keysPressed.ArrowLeft) { appKun.x -= appKun.moveSpeed; }
-            if (keysPressed.ArrowRight) { appKun.x += appKun.moveSpeed; }
+            if (keysPressed.ArrowLeft || touchMoveDirection === -1) { appKun.x -= appKun.moveSpeed; }
+            if (keysPressed.ArrowRight || touchMoveDirection === 1) { appKun.x += appKun.moveSpeed; }
         }
+        if (appKun.isGrounded && keysPressed.ArrowDown) { appKun.isCrouching = true; }
+        if (appKun.x < 0) appKun.x = 0; if (appKun.x > 736) appKun.x = 736;
 
-        if (appKun.isGrounded && keysPressed.ArrowDown) {
-            appKun.isCrouching = true;
-        }
+        if (appKun.isCrouching) { appKun.hitboxOffsetY = 32; appKun.height = 28; } 
+        else { appKun.hitboxOffsetY = 14; appKun.height = 50; }
 
-        if (appKun.x < 0) appKun.x = 0;
-        if (appKun.x > 736) appKun.x = 736;
-
-        if (appKun.isCrouching) {
-            appKun.hitboxOffsetY = 32;
-            appKun.height = 28;
-        } else {
-            appKun.hitboxOffsetY = 14;
-            appKun.height = 50;
-        }
-
-        appKun.vy += appKun.gravity;
-        appKun.y += appKun.vy;
-
+        appKun.vy += appKun.gravity; appKun.y += appKun.vy;
         if (appKun.y >= appKun.baseY) {
             if (!appKun.isGrounded) { appKun.landSquat = 5; }
-            appKun.y = appKun.baseY;
-            appKun.vy = 0;
-            appKun.isGrounded = true;
-            appKun.angle = 0; 
-            
+            appKun.y = appKun.baseY; appKun.vy = 0; appKun.isGrounded = true; appKun.angle = 0; 
             if (!appKun.isCrouching) {
                 appKun.animeTimer += currentSpeed;
-                if (appKun.animeTimer > 60) {
-                    appKun.animeFrame = appKun.animeFrame === 0 ? 1 : 0;
-                    appKun.animeTimer = 0;
-                }
+                if (appKun.animeTimer > 60) { appKun.animeFrame = appKun.animeFrame === 0 ? 1 : 0; appKun.animeTimer = 0; }
             }
-        } else {
-            appKun.animeFrame = 1; 
-            appKun.angle = appKun.vy * 0.02; 
-            appKun.isCrouching = false; 
-        }
+        } else { appKun.animeFrame = 1; appKun.angle = appKun.vy * 0.02; appKun.isCrouching = false; }
 
         if (appKun.landSquat > 0) { appKun.landSquat -= 0.4; }
 
-        // 障害物の処理
         for (let i = obstacles.length - 1; i >= 0; i--) {
-            let obs = obstacles[i];
-            obs.x -= currentSpeed; 
-
-            if (obs.specialMove === 'randomWave') {
-                obs.waveAngle += 0.07; 
-                let offset = Math.sin(obs.waveAngle) * obs.waveAmplitude;
-                obs.y = Math.max(120, Math.min(200, obs.baseY + offset)); 
-            }
-
+            let obs = obstacles[i]; obs.x -= currentSpeed; 
+            if (obs.specialMove === 'randomWave') { obs.waveAngle += 0.07; let offset = Math.sin(obs.waveAngle) * obs.waveAmplitude; obs.y = Math.max(120, Math.min(200, obs.baseY + offset)); }
             if (checkCollision(appKun, obs)) {
-                gameState = 'GAMEOVER';
-                const bgm = document.getElementById('bgm'); if (bgm) bgm.pause();
-                
-                if (Math.floor(distance) > highScore) {
-                    highScore = Math.floor(distance); isNewRecord = true; playNewRecordSound(); 
-                } else {
-                    isNewRecord = false; playGameOverSound(); 
-                }
+                gameState = 'GAMEOVER'; const bgm = document.getElementById('bgm'); if (bgm) bgm.pause();
+                if (Math.floor(distance) > highScore) { highScore = Math.floor(distance); isNewRecord = true; playNewRecordSound(); } 
+                else { isNewRecord = false; playGameOverSound(); }
             }
-
             if (obs.x + obs.width < 0) { obstacles.splice(i, 1); }
         }
-
         if (obstacles.length === 0) { spawnObstacleGroup(); }
 
-        // 障害物の描画
         obstacles.forEach(obs => {
             if (obs.name === 'dumbbell') { ctx.drawImage(images.dumbbell, obs.x, obs.y, obs.width, obs.height); } 
             else if (obs.name === 'rack-barbel') { ctx.drawImage(images.barbel, obs.x, obs.y, obs.width, obs.height); } 
             else if (obs.name === 'shaker') { ctx.drawImage(images.shaker, obs.x, obs.y, obs.width, obs.height); }
         });
 
-        // --- アップ君の描画 ---
         ctx.save();
-        let drawY = appKun.y + appKun.landSquat;
-        ctx.translate(appKun.x + appKun.imgWidth / 2, drawY + appKun.imgHeight / 2);
-        ctx.rotate(appKun.angle);
-        if (appKun.landSquat > 0) { ctx.scale(1.1, 1.0 - (appSquat = appKun.landSquat * 0.02)); }
-        
-        let currentAppImage;
-        if (appKun.isCrouching) {
-            currentAppImage = images.appKun3; 
-        } else {
-            currentAppImage = appKun.animeFrame === 0 ? images.appKun1 : images.appKun2;
-        }
-        
+        let drawY = appKun.y + appKun.landSquat; ctx.translate(appKun.x + appKun.imgWidth / 2, drawY + appKun.imgHeight / 2); ctx.rotate(appKun.angle);
+        if (appKun.landSquat > 0) { ctx.scale(1.1, 1.0 - (appKun.landSquat * 0.02)); }
+        let currentAppImage = appKun.isCrouching ? images.appKun3 : (appKun.animeFrame === 0 ? images.appKun1 : images.appKun2);
         ctx.drawImage(currentAppImage, -appKun.imgWidth / 2, -appKun.imgHeight / 2, appKun.imgWidth, appKun.imgHeight);
         ctx.restore();
 
-        ctx.fillStyle = '#2f3542';
-        ctx.font = '20px "DotGothic16"'; ctx.textAlign = 'left';
-        ctx.fillText(`距離: ${Math.floor(distance)} m`, 20, 35);
+        ctx.fillStyle = '#2f3542'; ctx.font = '20px "DotGothic16"'; ctx.textAlign = 'left'; ctx.fillText(`距離: ${Math.floor(distance)} m`, 20, 35);
         ctx.font = '15px "DotGothic16"'; ctx.fillText(`最高記録: ${highScore} m`, 20, 65);
 
     } else if (gameState === 'GAMEOVER') {
@@ -706,18 +580,20 @@ function gameLoop() {
         ctx.fillStyle = '#ff4757'; ctx.font = '36px "DotGothic16"'; ctx.textAlign = 'center'; ctx.fillText('GAME OVER', canvas.width / 2, 100);
         ctx.fillStyle = '#fff'; ctx.font = '22px "DotGothic16"'; ctx.fillText(`記録: ${Math.floor(distance)} m`, canvas.width / 2, 145);
 
-        if (isNewRecord && highScore > 0) {
-            ctx.fillStyle = '#eccc68'; ctx.font = '22px "DotGothic16"'; ctx.fillText('★ 新記録達成！ナイスバルク！ ★', canvas.width / 2, 195);
-        } else {
-            ctx.fillStyle = '#f1f2f6'; ctx.font = '16px "DotGothic16"'; ctx.fillText(`（歴代最高: ${highScore} m）`, canvas.width / 2, 185);
-        }
+        if (isNewRecord && highScore > 0) { ctx.fillStyle = '#eccc68'; ctx.font = '22px "DotGothic16"'; ctx.fillText('★ 新記録達成！ナイスバルク！ ★', canvas.width / 2, 195); } 
+        else { ctx.fillStyle = '#f1f2f6'; ctx.font = '16px "DotGothic16"'; ctx.fillText(`（歴代最高: ${highScore} m）`, canvas.width / 2, 185); }
 
-        if (gameOverTimer > 48) {
-            ctx.fillStyle = '#fff'; ctx.font = '16px "DotGothic16"'; ctx.fillText('どこでも画面を触るかスペースで再挑戦', canvas.width / 2, 240);
-        }
+        if (gameOverTimer > 48) { ctx.fillStyle = '#fff'; ctx.font = '16px "DotGothic16"'; ctx.fillText('どこでも画面を触るかスペースで再挑戦', canvas.width / 2, 240); }
     }
     requestAnimationFrame(gameLoop);
 }
+
+// パソコンのマウスクリックでの誤作動を完全防止
+window.addEventListener('mousedown', (e) => {
+    if ('ontouchstart' in window) return; // スマホなら無視
+    if (e.target.closest('#mute-switch') || e.target.closest('#start-screen')) return;
+    processInput();
+});
 </script>
 
 </body>

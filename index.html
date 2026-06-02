@@ -450,6 +450,12 @@ window.addEventListener('touchstart', (e) => {
 }, { passive: false });
 
 window.addEventListener('touchmove', (e) => {
+    // 💡【超重要・今回のバグ修正】もし今触っているのが右上のミュートボタンなら、移動の計算を完全に無視して即終了する！
+    if (e.target.closest('#mute-switch')) {
+        touchMoveDirection = 0; // 移動フラグを強制的に静止にする
+        return;
+    }
+
     if (gameState !== 'PLAYING') return;
     if (e.cancelable) e.preventDefault();
 
@@ -472,7 +478,7 @@ window.addEventListener('touchmove', (e) => {
         return;
     }
 
-    // 左右移動の判定（一定距離以上指が動いたらフラグを立てる）
+    // 左右移動の判定
     if (!appKun.isCrouching) {
         if (Math.abs(diffX) > 15) {
             isDragging = true;

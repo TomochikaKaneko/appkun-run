@@ -2,20 +2,25 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>アップ君の筋トレラン</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>アップ君の筋トレラン - スマホ快適版</title>
     <style>
-        body {
+        html, body {
+            overflow: hidden; /* スマホの無駄なスクロールを完全に防止 */
+            width: 100%;
+            height: 100%;
             margin: 0;
             padding: 0;
+        }
+        body {
             background-color: #f0f0f0;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            height: 100vh;
             font-family: 'Helvetica Neue', Arial, sans-serif;
             user-select: none;
+            -webkit-user-select: none;
         }
         canvas {
             background-color: #7ed6df; 
@@ -33,7 +38,7 @@
 <body>
 
 <canvas id="gameCanvas" width="800" height="300"></canvas>
-<div class="info">スペースキー または 画面タップでジャンプ</div>
+<div class="info">画面のどこをタップ・クリックしてもジャンプ！</div>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
@@ -46,7 +51,7 @@ let isNewRecord = false;
 let currentSpeed = 5;
 let bgOffset = 0;
 
-// 画像の読み込み管理（appkun1 と appkun2 を読み込みます）
+// 画像の読み込み管理
 const images = {};
 const imgSources = {
     appKun1: 'appkun1.png',
@@ -88,8 +93,8 @@ const appKun = {
     isGrounded: true,
     
     // アニメーション制御用
-    animeFrame: 0,     // 0か1かで画像を切り替える
-    animeTimer: 0,     // パタパタさせる速度管理
+    animeFrame: 0,     
+    animeTimer: 0,     
     landSquat: 0,      
     angle: 0           
 };
@@ -103,11 +108,18 @@ const OBSTACLE_TYPES = [
 
 let obstacles = [];
 
+// 【大アプデ】canvasではなく「window(画面全体)」でイベントをキャッチする！
 window.addEventListener('keydown', (e) => {
     if (e.code === 'Space') { e.preventDefault(); handleInput(); }
 });
-canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handleInput(); });
-canvas.addEventListener('mousedown', handleInput);
+window.addEventListener('touchstart', (e) => { 
+    // 画面ダブルタップで拡大ズームされるスマホの挙動を無効化しつつジャンプ
+    e.preventDefault(); 
+    handleInput(); 
+}, { passive: false });
+window.addEventListener('mousedown', (e) => {
+    handleInput();
+});
 
 function handleInput() {
     if (gameState === 'START' || gameState === 'GAMEOVER') {
@@ -215,7 +227,7 @@ function gameLoop() {
         ctx.textAlign = 'center';
         ctx.fillText('アップ君の筋トレラン', canvas.width / 2, 110);
         ctx.font = '18px sans-serif';
-        ctx.fillText('スペースキーか画面タップでスタート！', canvas.width / 2, 160);
+        ctx.fillText('画面のどこかを触ってスタート！', canvas.width / 2, 160);
 
         ctx.drawImage(images.appKun1, appKun.x, appKun.y, appKun.imgWidth, appKun.imgHeight);
 
@@ -249,14 +261,12 @@ function gameLoop() {
             appKun.isGrounded = true;
             appKun.angle = 0; 
             
-            // 【新システム】地面にいる時はスピードに合わせてパタパタ切り替え！
             appKun.animeTimer += currentSpeed;
-            if (appKun.animeTimer > 60) { // 一定数値が溜まったらフレーム交代
+            if (appKun.animeTimer > 60) { 
                 appKun.animeFrame = appKun.animeFrame === 0 ? 1 : 0;
                 appKun.animeTimer = 0;
             }
         } else {
-            // 空中ジャンプ中は手足を前に出したポーズ（appkun2）で固定してのけぞらせる
             appKun.animeFrame = 1; 
             appKun.angle = appKun.vy * 0.02; 
         }
@@ -315,7 +325,6 @@ function gameLoop() {
             ctx.scale(1.1, 1.0 - (appKun.landSquat * 0.02)); 
         }
 
-        // animeFrameの値（0か1）によって読み込む画像ファイルを切り替える！
         let currentAppImage = appKun.animeFrame === 0 ? images.appKun1 : images.appKun2;
         ctx.drawImage(currentAppImage, -appKun.imgWidth / 2, -appKun.imgHeight / 2, appKun.imgWidth, appKun.imgHeight);
         ctx.restore();
@@ -360,7 +369,7 @@ function gameLoop() {
 
         ctx.fillStyle = '#fff';
         ctx.font = '16px sans-serif';
-        ctx.fillText('クリック または スペースキーで再挑戦', canvas.width / 2, 240);
+        ctx.fillText('画面を触って再挑戦', canvas.width / 2, 240);
     }
 
     requestAnimationFrame(gameLoop);

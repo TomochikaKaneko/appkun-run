@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>アップ君の筋トレラン</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f0f0f0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            user-select: none;
+        }
+        canvas {
+            background-color: #7ed6df; 
+            border: 4px solid #333;
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+            max-width: 100%;
+        }
+        .info {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+
+<canvas id="gameCanvas" width="800" height="300"></canvas>
+<div class="info">スペースキー または 画面タップでジャンプ</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+let gameState = 'START';
+let distance = 0;
+let highScore = 0;
+let isNewRecord = false;
+let currentSpeed = 5;
+let bgOffset = 0;
+
+// 画像の読み込み管理（appkun1 と appkun2 を読み込みます）
+const images = {};
+const imgSources = {
+    appKun1: 'appkun1.png',
+    appKun2: 'appkun2.png',
+    bg: 'bg_park.png',
+    dumbbell: 'dumbbell.png',
+    barbel: 'barbel.png',
+    shaker: 'shaker.png'
+};
+
+let loadedImages = 0;
+const totalImages = Object.keys(imgSources).length;
+
+for (let key in imgSources) {
+    images[key] = new Image();
+    images[key].src = imgSources[key];
+    images[key].onload = () => {
+        loadedImages++;
+        if (loadedImages === totalImages) {
+            gameLoop();
+        }
+    };
+}
+
+// アップ君の設定
+const appKun = {
+    x: 80,
+    y: 186,          
+    baseY: 186,
+    imgWidth: 64,    
+    imgHeight: 64,
+    hitboxOffsetX: 12, 
+    hitboxOffsetY: 14,
+    width: 40,       
+    height: 50,
+    vy: 0,
+    gravity: 0.6,
+    jumpForce: -13, 
+    isGrounded: true,
+    
+    // アニメーション制御用
+    animeFrame: 0,     // 0か1かで画像を切り替える
+    animeTimer: 0,     // パタパタさせる速度管理
+    landSquat: 0,      
+    angle: 0           
+};
+
+// 障害物の定義
+const OBSTACLE_TYPES = [
+    { name: 'dumbbell', width: 40, height: 40, type: 'ground', spawnY: 210 },     
+    { name: 'rack-barbel', width: 60, height: 75, type: 'ground', spawnY: 175 },  
+    { name: 'shaker', width: 40, height: 25, type: 'air', spawnY: 130 }
+];
+
+let obstacles = [];
+
+window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') { e.preventDefault(); handleInput(); }
+});
+canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handleInput(); });
+canvas.addEventListener('mousedown', handleInput);
+
+function handleInput() {
+    if (gameState === 'START' || gameState === 'GAMEOVER') {
+        initGame();
+        gameState = 'PLAYING';
+    } else if (gameState === 'PLAYING') {
+        if (appKun.isGrounded) {
+            appKun.vy = appKun.jumpForce;
+            appKun.isGrounded = false;
+        }
+    }
+}
+
+function initGame() {
+    distance = 0;
+    currentSpeed = 5;
+    bgOffset = 0;
+    isNewRecord = false;
+    appKun.y = appKun.baseY; 
+    appKun.vy = 0;
+    appKun.isGrounded = true;
+    appKun.animeFrame = 0;
+    appKun.animeTimer = 0;
+    appKun.landSquat = 0;
+    appKun.angle = 0;
+    obstacles = [];
+    spawnObstacleGroup();
+}
+
+function createObstacle(baseX, type) {
+    let specialMove = 'none';
+    let waveAmplitude = 0;
+
+    if (type.type === 'air' && distance >= 500) {
+        const moveRand = Math.random();
+        if (moveRand > 0.4) {
+            specialMove = 'randomWave'; 
+            waveAmplitude = 20 + Math.random() * 40; 
+        }
+    }
+
+    return {
+        x: baseX,
+        y: type.spawnY,
+        baseY: type.spawnY,
+        width: type.width,
+        height: type.height,
+        name: type.name,
+        type: type.type,
+        waveAngle: Math.random() * Math.PI, 
+        waveAmplitude: waveAmplitude, 
+        specialMove: specialMove 
+    };
+}
+
+function spawnObstacleGroup() {
+    let count = 1;
+    if (distance >= 1000) {
+        const rand = Math.random();
+        if (rand > 0.8) count = 3;
+        else if (rand > 0.5) count = 2;
+    }
+
+    let currentX = 800;
+    const type = OBSTACLE_TYPES[Math.floor(Math.random() * OBSTACLE_TYPES.length)];
+
+    if (type.name === 'rack-barbel' && count > 2) {
+        count = 2;
+    }
+
+    for (let i = 0; i < count; i++) {
+        if (i > 0) {
+            let spacing = type.name === 'rack-barbel' ? 250 : 180;
+            currentX += type.width + spacing + Math.random() * 70;
+        }
+        obstacles.push(createObstacle(currentX, type));
+    }
+}
+
+function checkCollision(player, rect2) {
+    const pEx = player.x + player.hitboxOffsetX;
+    const pEy = player.y + player.hitboxOffsetY;
+    return pEx < rect2.x + rect2.width &&
+           pEx + player.width > rect2.x &&
+           pEy < rect2.y + rect2.height &&
+           pEy + player.height > rect2.y;
+}
+
+function gameLoop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (gameState === 'PLAYING') {
+        bgOffset = (bgOffset - currentSpeed * 0.5) % 800;
+    }
+    
+    ctx.drawImage(images.bg, bgOffset, 0, 800, 270);
+    ctx.drawImage(images.bg, bgOffset + 800, 0, 800, 270);
+
+    ctx.fillStyle = '#1e8449';
+    ctx.fillRect(0, 270, canvas.width, 30);
+
+    if (gameState === 'START') {
+        ctx.fillStyle = '#2f3542';
+        ctx.font = 'bold 28px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('アップ君の筋トレラン', canvas.width / 2, 110);
+        ctx.font = '18px sans-serif';
+        ctx.fillText('スペースキーか画面タップでスタート！', canvas.width / 2, 160);
+
+        ctx.drawImage(images.appKun1, appKun.x, appKun.y, appKun.imgWidth, appKun.imgHeight);
+
+    } else if (gameState === 'PLAYING') {
+        let previousDistance = distance;
+        distance += currentSpeed * 0.05;
+        
+        let oldMilestone = Math.floor(previousDistance / 100);
+        let newMilestone = Math.floor(distance / 100);
+
+        if (newMilestone > oldMilestone) {
+            if (distance < 1000) {
+                currentSpeed += 1.0;
+            } else {
+                let minSpeed = 5.0;
+                let maxSpeed = 10.0 + (newMilestone - 10);
+                currentSpeed = minSpeed + Math.random() * (maxSpeed - minSpeed); 
+            }
+        }
+
+        // --- アップ君の物理演算 ＆ アニメーション ---
+        appKun.vy += appKun.gravity;
+        appKun.y += appKun.vy;
+
+        if (appKun.y >= appKun.baseY) {
+            if (!appKun.isGrounded) {
+                appKun.landSquat = 5; 
+            }
+            appKun.y = appKun.baseY;
+            appKun.vy = 0;
+            appKun.isGrounded = true;
+            appKun.angle = 0; 
+            
+            // 【新システム】地面にいる時はスピードに合わせてパタパタ切り替え！
+            appKun.animeTimer += currentSpeed;
+            if (appKun.animeTimer > 60) { // 一定数値が溜まったらフレーム交代
+                appKun.animeFrame = appKun.animeFrame === 0 ? 1 : 0;
+                appKun.animeTimer = 0;
+            }
+        } else {
+            // 空中ジャンプ中は手足を前に出したポーズ（appkun2）で固定してのけぞらせる
+            appKun.animeFrame = 1; 
+            appKun.angle = appKun.vy * 0.02; 
+        }
+
+        if (appKun.landSquat > 0) {
+            appKun.landSquat -= 0.4;
+        }
+
+        // --- 障害物の移動・変化・判定 ---
+        for (let i = obstacles.length - 1; i >= 0; i--) {
+            let obs = obstacles[i];
+            obs.x -= currentSpeed; 
+
+            if (obs.specialMove === 'randomWave') {
+                obs.waveAngle += 0.06; 
+                let offset = Math.sin(obs.waveAngle) * obs.waveAmplitude;
+                let newY = obs.baseY + offset; 
+                obs.y = Math.max(100, Math.min(195, newY)); 
+            }
+
+            if (checkCollision(appKun, obs)) {
+                gameState = 'GAMEOVER';
+                if (Math.floor(distance) > highScore) {
+                    highScore = Math.floor(distance);
+                    isNewRecord = true;
+                }
+            }
+
+            if (obs.x + obs.width < 0) {
+                obstacles.splice(i, 1);
+            }
+        }
+
+        if (obstacles.length === 0) {
+            spawnObstacleGroup();
+        }
+
+        // --- 障害物の描画 ---
+        obstacles.forEach(obs => {
+            if (obs.name === 'dumbbell') {
+                ctx.drawImage(images.dumbbell, obs.x, obs.y, obs.width, obs.height);
+            } else if (obs.name === 'rack-barbel') {
+                ctx.drawImage(images.barbel, obs.x, obs.y, obs.width, obs.height);
+            } else if (obs.name === 'shaker') {
+                ctx.drawImage(images.shaker, obs.x, obs.y, obs.width, obs.height);
+            }
+        });
+
+        // --- アップ君の変形パタパタ描画 ---
+        ctx.save();
+        let drawY = appKun.y + appKun.landSquat;
+        ctx.translate(appKun.x + appKun.imgWidth / 2, drawY + appKun.imgHeight / 2);
+        ctx.rotate(appKun.angle);
+
+        if (appKun.landSquat > 0) {
+            ctx.scale(1.1, 1.0 - (appKun.landSquat * 0.02)); 
+        }
+
+        // animeFrameの値（0か1）によって読み込む画像ファイルを切り替える！
+        let currentAppImage = appKun.animeFrame === 0 ? images.appKun1 : images.appKun2;
+        ctx.drawImage(currentAppImage, -appKun.imgWidth / 2, -appKun.imgHeight / 2, appKun.imgWidth, appKun.imgHeight);
+        ctx.restore();
+
+        // UI表示
+        ctx.fillStyle = '#2f3542';
+        ctx.font = 'bold 20px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(`距離: ${Math.floor(distance)} m`, 20, 35);
+        ctx.font = '16px sans-serif';
+        ctx.fillText(`最高記録: ${highScore} m`, 20, 65);
+
+    } else if (gameState === 'GAMEOVER') {
+        obstacles.forEach(obs => {
+            if (obs.name === 'dumbbell') ctx.drawImage(images.dumbbell, obs.x, obs.y, obs.width, obs.height);
+            else if (obs.name === 'rack-barbel') ctx.drawImage(images.barbel, obs.x, obs.y, obs.width, obs.height);
+            else if (obs.name === 'shaker') ctx.drawImage(images.shaker, obs.x, obs.y, obs.width, obs.height);
+        });
+        ctx.drawImage(images.appKun1, appKun.x, appKun.y, appKun.imgWidth, appKun.imgHeight);
+
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = '#ff4757';
+        ctx.font = 'bold 36px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('GAME OVER', canvas.width / 2, 100);
+
+        ctx.fillStyle = '#fff';
+        ctx.font = '22px sans-serif';
+        ctx.fillText(`記録: ${Math.floor(distance)} m`, canvas.width / 2, 145);
+
+        if (isNewRecord && highScore > 0) {
+            ctx.fillStyle = '#eccc68';
+            ctx.font = 'bold 26px sans-serif';
+            ctx.fillText('★ 新記録達成！ナイスバルク！ ★', canvas.width / 2, 195);
+        } else {
+            ctx.fillStyle = '#f1f2f6';
+            ctx.font = '16px sans-serif';
+            ctx.fillText(`（歴代最高: ${highScore} m）`, canvas.width / 2, 185);
+        }
+
+        ctx.fillStyle = '#fff';
+        ctx.font = '16px sans-serif';
+        ctx.fillText('クリック または スペースキーで再挑戦', canvas.width / 2, 240);
+    }
+
+    requestAnimationFrame(gameLoop);
+}
+</script>
+
+</body>
+</html>

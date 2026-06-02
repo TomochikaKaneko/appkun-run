@@ -30,8 +30,8 @@
         #game-wrapper {
             position: relative;
             width: 800px;
-            height: 300px;
-            transform-origin: center center; /* 真ん中を基準に拡大縮小 */
+            height: 350px; /* ★300pxから350pxに広げてテキストの居場所を確保 */
+            transform-origin: center center;
         }
 
         #game-container {
@@ -47,18 +47,20 @@
             display: block;
         }
 
-        /* 下部の操作説明テキスト（画面が縮んでもはみ出さない位置へ） */
+        /* ★【修正】キャンバスの黒枠内、一番底の緑エリアに上から位置を指定して収める */
         .info {
             position: absolute;
-            bottom: -50px; /* ★位置を-35pxから-50pxに下げて余裕を持たせる */
+            top: 275px; /* ★上から268pxの位置に固定（Y=270〜300の緑エリアにジャストフィット） */
             left: 0;
             width: 100%;
-            font-size: 14px;
-            color: #333;
-            letter-spacing: 1px;
+            font-size: 11px; /* 文字サイズは収まりの良い11pxをキープ */
+            color: #ffffff; /* 文字色は白 */
+            text-shadow: 1px 1px 0px #000000; /* 黒の縁取り影 */
+            letter-spacing: 0.5px;
             text-align: center;
             pointer-events: none;
-            line-height: 1.6; /* 2行の文字間隔を少し広げて見やすく */
+            line-height: 1.3; /* 2行が緑の幅（30px）からはみ出さないように少しだけタイトに */
+            z-index: 10;
         }
 
         /* ゲームエリアの右上に配置されるミュートスイッチ */
@@ -86,8 +88,8 @@
             position: absolute;
             top: 4px;   /* キャンバスの枠線（4px）に合わせる */
             left: 4px;
-            width: 792px;  /* 800px - 枠線左右8px分 */
-            height: 292px; /* 300px - 枠線上下8px分（全面を覆う） */
+            width: 800px;  /* 800px - 枠線左右8px分 */
+            height: 300px; /* 300px - 枠線上下8px分（全面を覆う） */
             background-color: #7ed6df; /* ★背景画像と同じ水色にして完全に一体化させる */
             z-index: 50;
             display: flex;
